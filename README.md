@@ -1,63 +1,42 @@
-# Showcase
+# Showcase Infrastructure & DevOps
 
-A Go web application with user management, cookie session authentication, and profile image uploads to Garage S3 storage.
+This repository showcases my DevOps and infrastructure practices, focusing on Infrastructure as Code (IaC), GitOps deployment pipelines, self-hosted storage, and Kubernetes networking.
 
-## Architecture
+The Go application in `backend/` serves as the workload for testing and validating this deployment setup.
 
-The backend is built in Go using `net/http` and Ent ORM with a PostgreSQL database. Infrastructure and deployment manifests sit in `ops/` managed via OpenTofu and ArgoCD.
+## Infrastructure Architecture
 
-- **Backend**: Go 1.27 web server (`backend/main.go`)
-- **Database**: PostgreSQL with Ent ORM (`backend/ent`)
-- **Object Storage**: Garage S3 for uploaded profile images (`backend/garage`)
-- **Deployment**: Docker multi-stage build, Kubernetes manifests via OpenTofu and ArgoCD (`ops/tofu`)
+The core of this repository lives in `ops/tofu`, where OpenTofu provisions the underlying cluster resources and deployments:
 
-## API Endpoints
+- **GitOps Continuous Delivery**: ArgoCD deployed via Helm (`10.7.1`) manages applications with automated sync, pruning, and self-healing linked to the `showcase-gitops` repository.
+- **Database Provisioning**: PostgreSQL provisioned via Bitnami Helm charts (`18.8.13`) with persistent storage and auto-generated credentials managed as Kubernetes secrets.
+- **S3 Object Storage**: Self-hosted Garage S3 storage deployed via Helm, paired with an OpenTofu provisioner script that automatically provisions bucket keys, sets bucket permissions, and binds credentials into application secrets.
+- **Ingress & TLS**: Traefik ingress routing configured for HTTP/HTTPS services, including TCP passthrough for ArgoCD (`argocd.local`) and HTTP routing for the backend application (`showcase.local`).
+- **Container Build**: Multi-stage Dockerfile compiling a static Go binary into a scratch container.
 
-### Authentication
-- `POST /auth/login` - Authenticate with username and password; sets an HTTP-only session cookie
-- `POST /auth/logout` - Clear session cookie and remove session from database
+## Stack & Components
 
-### Users
-- `POST /users` - Register a new user account
-- `GET /users` - List all registered users
-- `GET /users/{id}` - Get user details by ID
-- `PATCH /users/{id}` - Update user profile (requires active session)
-- `DELETE /users/{id}` - Delete user account (requires active session)
-- `POST /users/profileupload` - Upload a profile picture to S3 storage (requires active session)
+| Component | Tool / Technology | Path / Details |
+| --- | --- | --- |
+| Infrastructure as Code | OpenTofu | `ops/tofu/` |
+| GitOps Engine | ArgoCD | `ops/tofu/argocd.tf`, `ops/tofu/argocd-showcaseapp.tf` |
+| Object Storage | Garage S3 | `ops/tofu/garage.tf`, `ops/tofu/garage-bucket.tf` |
+| Database | PostgreSQL (Bitnami Helm) | `ops/tofu/postgres.tf` |
+| Ingress Controller | Traefik | `ops/tofu/showcase-ingress.tf` |
+| Containerization | Docker (Multi-stage) | `Dockerfile` |
 
-### Projects
-- `GET /projects` - List projects
+## Deployment Workflow
 
-## Environment Variables
+1. **Provision Cluster Services**
+   OpenTofu applies Helm charts for ArgoCD, PostgreSQL, and Garage S3, then configures S3 buckets and credentials:
+   ```bash
+   cd ops/tofu
+   tofu init
+   tofu apply
+   ```
 
-Copy `.env.example` to `.env` or pass the required environment variables:
+2. **GitOps Synchronization**
+   ArgoCD watches the GitOps repo (`https://github.com/CANUreal/showcase-gitops.git`) and automatically syncs the Kubernetes manifests to the `showcase` namespace.
 
-```
-DATABASE_URL=postgres://user:password@localhost:5432/dbname?sslmode=disable
-AWS_ACCESS_KEY_ID=your_garage_key
-AWS_SECRET_ACCESS_KEY=your_garage_secret
-S3_ENDPOINT=http://localhost:3900
-S3_BUCKET=showcase-profile-images
-```
-
-## Local Development
-
-Run tests or build the service locally:
-
-```bash
-cd backend
-go run main.go
-```
-
-To run database migrations:
-
-```bash
-cd backend
-go run cmd/migrate/main.go
-```
-
-To build the Docker container:
-
-```bash
-docker build -t showcase .
-```
+3. **Application Workload**
+   The Go backend handles simple session management and image upload workflows to verify PostgreSQL connectivity and Garage S3 operations.
